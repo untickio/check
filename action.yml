@@ -1,0 +1,45 @@
+name: untick check
+description: Scan a deploy or preview with untick and fail the job on new consent and dark-pattern problems.
+author: untick
+branding:
+  icon: check-circle
+  color: green
+inputs:
+  api-token:
+    description: Your untick API token (untk_...). Keep it in a repository secret.
+    required: true
+  url:
+    description: The address to scan, for example your preview deploy.
+    required: true
+  site-id:
+    description: Compare with this untick site (needed when the preview has a different address than your site).
+    required: false
+  fail-on:
+    description: "new = fail only on new serious problems. any = fail on any serious problem."
+    required: false
+    default: new
+  basic-auth-user:
+    description: Username when the preview is protected by a login.
+    required: false
+  basic-auth-pass:
+    description: Password when the preview is protected by a login. Keep it in a secret.
+    required: false
+  comment:
+    description: Post or update one comment on the pull request (true or false).
+    required: false
+    default: "true"
+  github-token:
+    description: Needed to write the pull request comment. Use the built-in token.
+    required: false
+    default: ${{ github.token }}
+  timeout-minutes:
+    description: How long to wait for the scan.
+    required: false
+    default: "6"
+  api-base:
+    description: Only for testing. Defaults to the untick API.
+    required: false
+    default: https://app.untick.io/api/v1
+runs:
+  using: node24
+  main: dist/index.js
