@@ -18,6 +18,10 @@ inputs:
     description: "new = fail only on new serious problems. any = fail on any serious problem."
     required: false
     default: new
+  fail-on-incomplete:
+    description: "true = also fail when some checks couldn't finish. false = pass with a warning listing what wasn't checked."
+    required: false
+    default: "false"
   basic-auth-user:
     description: Username when the preview is protected by a login.
     required: false
