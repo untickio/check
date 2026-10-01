@@ -45,14 +45,23 @@ async function poll(base, token, scanId, timeoutMs) {
 }
 
 
-function markdown(r) {
+/** Older APIs have no `outcome`; then only `failed` decides. */
+const incomplete = (r) => r.outcome === 'inconclusive';
+
+function markdown(r, strict = false) {
   const lines = [MARKER, '### untick check', ''];
   if (r.status === 'failed') {
     lines.push(`We couldn't scan this page: ${r.error ?? 'unknown reason'}`, '', `[Open the report](${r.reportUrl})`);
     return lines.join('\n');
   }
+  const gaps = r.coverageIssues ?? [];
+  const head = r.failed
+    ? `**Failed.** ${r.failOn === 'new' ? 'New serious problems were found.' : 'Serious problems were found.'}`
+    : incomplete(r)
+      ? `**Not fully checked.** No serious problems found, but some checks couldn't finish.${strict ? ' This blocks the release (fail-on-incomplete).' : ''}`
+      : '**Passed.**';
   lines.push(
-    r.failed ? `**Failed.** ${r.failOn === 'new' ? 'New serious problems were found.' : 'Serious problems were found.'}` : '**Passed.**',
+    head,
     '',
     `- Grade **${r.grade ?? '-'}**${r.score == null ? '' : ` (score ${r.score})`}`,
   );
@@ -64,6 +73,10 @@ function markdown(r) {
       const extra = f.newDetails?.length ? ` (${f.newDetails.join(', ')})` : '';
       lines.push(`- **${f.severity}** ${f.title}${extra} on ${f.pageUrl}`);
     }
+  }
+  if (gaps.length) {
+    lines.push('', "**What we couldn't check**", '');
+    for (const g of gaps) lines.push(`- ${g.reason} (${g.pageUrl})`);
   }
   lines.push('', `[Open the full report](${r.reportUrl})`);
   return lines.join('\n');
@@ -102,6 +115,9 @@ async function main() {
   mask(pass);
   const failOn = input('fail-on', 'new');
   if (!['new', 'any'].includes(failOn)) throw new Error('fail-on must be new or any.');
+  const strictInput = input('fail-on-incomplete', 'false');
+  if (!['true', 'false'].includes(strictInput)) throw new Error('fail-on-incomplete must be true or false.');
+  const strict = strictInput === 'true';
   const base = input('api-base', 'https://app.untick.io/api/v1').replace(/\/+$/, '');
   const minutes = Number(input('timeout-minutes', '6'));
   const user = input('basic-auth-user');
@@ -116,7 +132,7 @@ async function main() {
   console.log(`Scan started: ${started.reportUrl}`);
   const r = await poll(base, token, started.scanId, (Number.isFinite(minutes) && minutes > 0 ? minutes : 6) * 60_000);
 
-  const md = markdown(r);
+  const md = markdown(r, strict);
   if (process.env.GITHUB_STEP_SUMMARY) fs.appendFileSync(process.env.GITHUB_STEP_SUMMARY, `${md}\n`);
   console.log(`Status: ${r.status}  Grade: ${r.grade ?? '-'}  Serious: ${r.blocking}  New: ${r.newFindings.length}  Serious and new: ${r.blockingNew}`);
   for (const f of r.newFindings) console.log(`  new ${f.severity}: ${f.title} (${f.pageUrl})`);
@@ -127,6 +143,11 @@ async function main() {
   if (r.failed) {
     console.log(`::error::untick found ${r.failOn === 'new' ? 'new ' : ''}serious problems: ${r.reportUrl}`);
     process.exit(1);
+  }
+  if (incomplete(r)) {
+    const level = strict ? 'error' : 'warning';
+    console.log(`::${level}::untick couldn't finish every check (${(r.coverageIssues ?? []).length} gaps): ${r.reportUrl}`);
+    if (strict) process.exit(1);
   }
 }
 
